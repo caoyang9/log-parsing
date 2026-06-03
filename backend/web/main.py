@@ -25,6 +25,7 @@ from models import UploadResponse, ParseReport, ParseStatus, CompareRequest, Tex
 from preprocess import preprocess
 from ai_parser import analyze_log, build_report
 from comparer import text_diff, ai_compare
+from storage import storage
 
 
 app = FastAPI(title="Android Logcat Parser", version="0.1.0")
@@ -44,9 +45,7 @@ import sys
 
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
-# 缓存
-report_cache: dict[str, ParseReport] = {}
-parse_status: dict[str, ParseStatus] = {}
+# 缓存由 storage 模块管理（JSON 文件持久化）
 
 
 @app.get("/")
@@ -76,9 +75,8 @@ async def upload_file(file: UploadFile = File(...)):
 
     file_size = save_path.stat().st_size
 
-    parse_status[file_id] = ParseStatus(
-        file_id=file_id, status="pending", progress="文件已上传，等待解析"
-    )
+    storage.add_file(file_id, file.filename, file_size)
+    storage.set_status(file_id, "pending", "文件已上传，等待解析")
 
     return UploadResponse(file_id=file_id, file_name=file.filename, file_size=file_size)
 
@@ -92,25 +90,17 @@ def parse_log(file_id: str):
     filepath = str(matches[0])
     filename = matches[0].name
 
-    parse_status[file_id] = ParseStatus(
-        file_id=file_id, status="processing", progress="正在预处理日志..."
-    )
+    storage.set_status(file_id, "processing", "正在预处理日志...")
 
     # 1. 预处理
     pr = preprocess(filepath)
 
-    parse_status[file_id] = ParseStatus(
-        file_id=file_id,
-        status="processing",
-        progress=f"预处理完成（{pr.total_lines} 行），正在 AI 分析..."
-    )
+    storage.set_status(file_id, "processing", f"预处理完成（{pr.total_lines} 行），正在 AI 分析...")
 
     # 2. AI 分析
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
-        parse_status[file_id] = ParseStatus(
-            file_id=file_id, status="error", progress="未配置 OPENAI_API_KEY"
-        )
+        storage.set_status(file_id, "error", "未配置 OPENAI_API_KEY")
         raise HTTPException(500, "未配置 OPENAI_API_KEY，请在 backend/.env 文件中设置")
 
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -119,18 +109,13 @@ def parse_log(file_id: str):
     try:
         ai_result = analyze_log(pr.llm_input, api_key, model, base_url)
     except Exception as e:
-        parse_status[file_id] = ParseStatus(
-            file_id=file_id, status="error", progress=f"AI 分析失败: {str(e)}"
-        )
+        storage.set_status(file_id, "error", f"AI 分析失败: {str(e)}")
         raise HTTPException(500, f"AI 分析失败: {str(e)}")
 
     # 3. 构建报告
     report = build_report(file_id, filename, pr, ai_result)
-    report_cache[file_id] = report
-
-    parse_status[file_id] = ParseStatus(
-        file_id=file_id, status="done", progress="分析完成"
-    )
+    storage.save_report(file_id, report.dict())
+    storage.set_status(file_id, "done", "分析完成")
 
     return report
 
@@ -138,17 +123,19 @@ def parse_log(file_id: str):
 @app.get("/api/report/{file_id}", response_model=ParseReport)
 def get_report(file_id: str):
     """获取缓存的报告"""
-    if file_id not in report_cache:
+    r = storage.get_report(file_id)
+    if not r:
         raise HTTPException(404, f"报告 {file_id} 不存在")
-    return report_cache[file_id]
+    return r
 
 
 @app.get("/api/status/{file_id}", response_model=ParseStatus)
 def get_status(file_id: str):
     """获取处理状态"""
-    if file_id not in parse_status:
+    s = storage.get_status(file_id)
+    if not s:
         raise HTTPException(404, f"状态不存在")
-    return parse_status[file_id]
+    return s
 
 
 def _report_to_markdown(report: ParseReport) -> str:
@@ -212,9 +199,10 @@ def _report_to_markdown(report: ParseReport) -> str:
 @app.get("/api/report/{file_id}/download")
 def download_report(file_id: str):
     """下载分析报告为 Markdown 文件"""
-    if file_id not in report_cache:
+    r = storage.get_report(file_id)
+    if not r:
         raise HTTPException(404, f"报告 {file_id} 不存在")
-    report = report_cache[file_id]
+    report = ParseReport(**r)
     md = _report_to_markdown(report)
     safe_name = report.file_name.rsplit(".", 1)[0]
     return StreamingResponse(
@@ -279,6 +267,33 @@ def compare_ai(req: CompareRequest):
         resolved_issues=result.get("resolved_issues", []),
         recommendations=result.get("recommendations", []),
     )
+
+# === 文件管理 ===
+
+@app.get("/api/files")
+def list_files():
+    """列出所有上传文件"""
+    files = storage.list_files()
+    return {"files": files, "total": len(files)}
+
+
+@app.delete("/api/files/{file_id}")
+def delete_file(file_id: str):
+    """删除文件及关联数据"""
+    from pathlib import Path as _Path
+    storage.remove_file(file_id)
+    # 删 uploads 下的文件
+    upload_dir = _Path(__file__).resolve().parent.parent / "uploads"
+    for f in upload_dir.glob(f"{file_id}.*"):
+        f.unlink()
+    return {"ok": True}
+
+
+@app.get("/api/reports")
+def list_reports():
+    """列出所有分析报告摘要"""
+    reports = storage.list_reports()
+    return {"reports": reports, "total": len(reports)}
 
 if __name__ == "__main__":
     import uvicorn

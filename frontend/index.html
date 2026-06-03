@@ -95,6 +95,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 .diff-normal{color:var(--text-dim)}
 /* Compare result stats */
 .compare-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+
+/* File list */
+.file-table{width:100%;border-collapse:collapse}
+.file-table th{text-align:left;padding:10px 12px;color:var(--text-dim);font-size:12px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.file-table td{padding:10px 12px;border-bottom:1px solid rgba(48,54,61,.5);font-size:14px}
+.file-table tr:hover td{background:rgba(88,166,255,.03)}
+.file-name{color:var(--accent);cursor:pointer}
+.file-name:hover{text-decoration:underline}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600}
+.status-done{background:rgba(63,185,80,.15);color:var(--green)}
+.status-pending{background:rgba(210,153,34,.15);color:var(--orange)}
+.status-processing{background:rgba(88,166,255,.15);color:var(--accent)}
+.status-error{background:rgba(248,81,73,.15);color:var(--red)}
+.btn-sm{padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;font-size:12px;margin-right:6px;transition:border-color .2s}
+.btn-sm:hover{border-color:var(--accent)}
+.btn-sm.danger{color:var(--red);border-color:rgba(248,81,73,.3)}
+.btn-sm.danger:hover{border-color:var(--red)}
+.fm-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.fm-header h2{font-size:20px}
+.fm-stats{display:flex;gap:16px;font-size:14px;color:var(--text-dim)}
+.fm-empty{text-align:center;padding:60px 20px;color:var(--text-dim)}
+
 @media(max-width:768px){.compare-uploads{grid-template-columns:1fr}.compare-stats{grid-template-columns:repeat(2,1fr)}}
 
 @media(max-width:640px){.stats-row{grid-template-columns:repeat(2,1fr)}.md-body{padding:20px}}
@@ -109,6 +131,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchMode('single')" id="tabSingle">📄 单文件分析</button>
     <button class="tab-btn" onclick="switchMode('compare')" id="tabCompare">🔀 文件对比</button>
+    <button class="tab-btn" onclick="switchMode('files')" id="tabFiles">📂 文件管理</button>
   </div>
 
   <main class="app-main" id="main"></main>
@@ -364,7 +387,8 @@ function switchMode(mode) {
   $('#tabSingle').classList.toggle('active', mode === 'single');
   $('#tabCompare').classList.toggle('active', mode === 'compare');
   if (mode === 'single') renderUpload();
-  else renderCompareUpload();
+  else if (mode === 'compare') renderCompareUpload();
+  else renderFiles();
 }
 
 function renderCompareUpload() {
@@ -543,6 +567,86 @@ function renderAICompare(r) {
     </div>
   `;
 }
+
+// === File Management ===
+async function renderFiles() {
+  main.innerHTML = `<div class="progress-section"><div class="spinner"></div><p class="progress-text">加载文件列表...</p></div>`;
+
+  try {
+    const res = await fetch('/api/files');
+    const data = await res.json();
+    const files = data.files || [];
+
+    if (files.length === 0) {
+      main.innerHTML = `<div class="fm-header"><h2>📂 文件管理</h2></div><div class="fm-empty"><p style="font-size:48px;margin-bottom:16px">📭</p><p>暂无文件，上传一个日志开始分析吧</p></div>`;
+      return;
+    }
+
+    const done = files.filter(f => f.status === 'done').length;
+    const processing = files.filter(f => f.status === 'processing' || f.status === 'pending').length;
+
+    let rows = '';
+    files.forEach(f => {
+      const size = (f.file_size / 1024).toFixed(1) + ' KB';
+      const date = new Date(f.uploaded_at * 1000).toLocaleString('zh-CN');
+      const statusIcon = {done:'✅',pending:'⏳',processing:'🔄',error:'❌'}[f.status] || '❓';
+      const statusClass = 'status-' + f.status;
+
+      rows += `<tr>
+        <td><span class="file-name" onclick="viewReport('${f.file_id}')">📄 ${escapeHtml(f.file_name)}</span></td>
+        <td>${size}</td>
+        <td>${date}</td>
+        <td><span class="status-badge ${statusClass}">${statusIcon} ${f.status}</span></td>
+        <td>
+          ${f.status === 'done' ? `<button class="btn-sm" onclick="viewReport('${f.file_id}')">查看</button>` : ''}
+          <button class="btn-sm danger" onclick="deleteFile('${f.file_id}')">删除</button>
+        </td>
+      </tr>`;
+    });
+
+    main.innerHTML = `
+      <div class="fm-header">
+        <h2>📂 文件管理</h2>
+        <div class="fm-stats">
+          <span>共 ${files.length} 个文件</span>
+          <span style="color:var(--green)">✅ ${done} 已完成</span>
+          <span style="color:var(--orange)">⏳ ${processing} 处理中</span>
+        </div>
+      </div>
+      <table class="file-table">
+        <thead><tr><th>文件名</th><th>大小</th><th>上传时间</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch(e) {
+    main.innerHTML = `<div class="error-section"><p class="error-msg">❌ 加载失败: ${escapeHtml(e.message)}</p><button class="btn-primary" onclick="renderFiles()">重试</button></div>`;
+  }
+}
+
+async function deleteFile(fileId) {
+  if (!confirm('确定删除该文件及分析报告？此操作不可恢复。')) return;
+  try {
+    const res = await fetch('/api/files/' + fileId, { method: 'DELETE' });
+    if (!res.ok) throw new Error('删除失败');
+    renderFiles();
+  } catch(e) {
+    alert('删除失败: ' + e.message);
+  }
+}
+
+async function viewReport(fileId) {
+  try {
+    const res = await fetch('/api/report/' + fileId);
+    if (!res.ok) throw new Error('报告不存在或尚未完成');
+    const report = await res.json();
+    currentFileId = fileId;
+    currentFileName = report.file_name;
+    renderResult(report);
+  } catch(e) {
+    alert(e.message);
+  }
+}
+
 
 // === Init ===
 renderUpload();
