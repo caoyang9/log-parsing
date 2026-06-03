@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Android Logcat 日志分析</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--bg-card:#161b22;--border:#30363d;--text:#e6edf3;--text-dim:#8b949e;--accent:#58a6ff;--accent-hover:#79c0ff;--red:#f85149;--orange:#d29922;--green:#3fb950}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.app{max-width:960px;margin:0 auto;padding:40px 20px}
+.app-header{text-align:center;margin-bottom:40px}
+.app-header h1{font-size:28px;margin-bottom:8px}
+.subtitle{color:var(--text-dim);font-size:15px}
+.app-main{min-height:400px}
+/* Upload */
+.dropzone{border:2px dashed var(--border);border-radius:12px;padding:60px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.dropzone:hover,.dropzone.active{border-color:var(--accent);background:rgba(88,166,255,.05)}
+.dropzone.uploading{cursor:default;border-color:var(--border)}
+.drop-icon{font-size:48px;margin-bottom:12px}
+.dropzone-text p{margin:6px 0;color:var(--text-dim)}
+.dropzone-text p:first-of-type{color:var(--text);font-size:16px}
+.drop-hint{font-size:13px}
+/* Spinner */
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Progress */
+.progress-section{text-align:center;padding:60px 20px}
+.progress-text{font-size:16px;margin-bottom:8px}
+.progress-hint{color:var(--text-dim);font-size:13px}
+/* Result */
+.result-section{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.result-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.result-header h2{font-size:20px}
+.btn-reset{background:var(--bg-card);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;transition:border-color .2s}
+.btn-reset:hover{border-color:var(--accent)}
+.btn-download{display:inline-flex;align-items:center;gap:4px;background:var(--green);color:#000;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-decoration:none;transition:opacity .2s}
+.btn-download:hover{opacity:.85}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-card.error{border-color:rgba(248,81,73,.3)}
+.stat-card.warn{border-color:rgba(210,153,34,.3)}
+.stat-value{display:block;font-size:24px;font-weight:700;margin-bottom:4px}
+.stat-label{display:block;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px}
+/* Markdown rendering */
+.md-body{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:32px;line-height:1.7;font-size:15px;overflow-wrap:break-word}
+.md-body h2{font-size:20px;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.md-body h2:first-child{margin-top:0}
+.md-body h3{font-size:16px;margin:16px 0 8px;color:var(--accent)}
+.md-body p{margin:8px 0}
+.md-body table{width:100%;border-collapse:collapse;margin:12px 0}
+.md-body th,.md-body td{border:1px solid var(--border);padding:8px 12px;text-align:left;font-size:14px}
+.md-body th{background:rgba(255,255,255,.04);font-weight:600}
+.md-body ul,.md-body ol{padding-left:24px;margin:8px 0}
+.md-body li{margin:4px 0}
+.md-body code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:13px;font-family:'SF Mono','Fira Code',monospace}
+.md-body pre{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;margin:12px 0;font-size:13px}
+.md-body pre code{background:none;padding:0;border-radius:0}
+.md-body blockquote{border-left:3px solid var(--accent);padding-left:16px;margin:12px 0;color:var(--text-dim)}
+.md-body strong{color:var(--text)}
+.sev-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;margin-right:6px}
+.sev-CRITICAL{background:rgba(248,81,73,.2);color:var(--red)}
+.sev-HIGH{background:rgba(234,88,12,.2);color:var(--orange)}
+.sev-MEDIUM{background:rgba(202,138,4,.2);color:#e2b714}
+.sev-LOW{background:rgba(22,163,74,.2);color:var(--green)}
+.error-section{text-align:center;padding:60px 20px}
+.error-msg{color:var(--red);font-size:16px;margin-bottom:16px}
+.btn-primary{background:var(--accent);color:#000;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600}
+.btn-primary:hover{background:var(--accent-hover)}
+
+/* Tab nav */
+.tab-nav{display:flex;gap:0;margin-bottom:32px;border-bottom:2px solid var(--border)}
+.tab-btn{padding:10px 24px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:15px;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .2s,border-color .2s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* Dual upload */
+.compare-uploads{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.compare-uploads .dropzone{padding:32px 16px}
+.compare-uploads .dropzone .drop-icon{font-size:32px}
+.compare-uploads .dropzone-text p:first-of-type{font-size:14px}
+.compare-label{text-align:center;font-size:14px;color:var(--text-dim);margin-bottom:8px}
+/* Compare actions */
+.compare-actions{text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center}
+.btn-compare{padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;transition:opacity .2s}
+.btn-compare:hover{opacity:.85}
+.btn-ai{background:var(--accent);color:#000}
+.btn-text{background:var(--bg-card);color:var(--text);border:1px solid var(--border)}
+.btn-compare:disabled{opacity:.4;cursor:not-allowed}
+/* Diff view */
+.diff-view{background:#0a0e14;border:1px solid var(--border);border-radius:10px;padding:20px;overflow-x:auto;font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.6;max-height:600px;overflow-y:auto}
+.diff-add{color:var(--green)}
+.diff-rem{color:var(--red)}
+.diff-meta{color:var(--accent)}
+.diff-normal{color:var(--text-dim)}
+/* Compare result stats */
+.compare-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:768px){.compare-uploads{grid-template-columns:1fr}.compare-stats{grid-template-columns:repeat(2,1fr)}}
+
+@media(max-width:640px){.stats-row{grid-template-columns:repeat(2,1fr)}.md-body{padding:20px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <h1>&#128269; Android Logcat 日志分析</h1>
+    <p class="subtitle">上传 logcat 日志，AI 自动识别异常并生成分析报告</p>
+  </header>
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchMode('single')" id="tabSingle">📄 单文件分析</button>
+    <button class="tab-btn" onclick="switchMode('compare')" id="tabCompare">🔀 文件对比</button>
+  </div>
+
+  <main class="app-main" id="main"></main>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const main = $('#main');
+
+let currentFileId = '';
+let currentFileName = '';
+
+// === Simple Markdown to HTML ===
+function md2html(md) {
+  let html = md;
+  // code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  // bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // tables
+  html = html.replace(/^\|(.+)\|$/gm, (line) => {
+    const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
+    if (cells.every(c => /^-+$/.test(c))) return '</thead><tbody>';
+    const tag = line.includes('</thead>') ? 'td' : 'th';
+    return '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+  });
+  html = html.replace(/<tbody>/, (m) => { return m; });
+  // wrap tables
+  html = html.replace(/(<tr><th.+?<\/tr>)([\s\S]*?)(?=<h|\n\n|$)/g, '<table><thead>$1</thead><tbody>$2</tbody></table>');
+  // lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, (m) => '<ul>' + m + '</ul>');
+  // paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  // clean empty
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p><h/g, '<h');
+  html = html.replace(/<\/h><\/p>/g, '</h>');
+  html = html.replace(/<\/table><\/p>/g, '</table>');
+  html = html.replace(/<p><table/g, '<table');
+  html = html.replace(/<p><ul/g, '<ul');
+  html = html.replace(/<\/ul><\/p>/g, '</ul>');
+  html = html.replace(/<p><pre/g, '<pre');
+  html = html.replace(/<\/pre><\/p>/g, '</pre>');
+  return html;
+}
+
+// === Build Markdown Report ===
+function buildReportMd(r) {
+  let md = '## 📊 分析总结\n\n' + r.summary + '\n\n';
+  md += '## 📋 日志概览\n\n';
+  md += '| 指标 | 数值 |\n|------|------|\n';
+  md += `| 总行数 | ${r.total_lines.toLocaleString()} |\n`;
+  md += `| 时间范围 | ${r.time_range} |\n`;
+  md += `| Fatal | ${r.level_counts.F || 0} |\n`;
+  md += `| Error | ${r.level_counts.E || 0} |\n`;
+  md += `| Warning | ${r.level_counts.W || 0} |\n`;
+  md += `| Info | ${r.level_counts.I || 0} |\n`;
+  md += `| Debug | ${r.level_counts.D || 0} |\n`;
+  md += `| Verbose | ${r.level_counts.V || 0} |\n\n`;
+
+  if (r.critical_issues?.length) {
+    md += '## 🚨 关键问题\n\n';
+    r.critical_issues.forEach(ci => {
+      md += `### <span class="sev-badge sev-${ci.severity}">${ci.severity}</span> ${ci.title}\n\n`;
+      md += `**描述**: ${ci.description}\n\n`;
+      md += `**建议**: ${ci.suggestion}\n\n`;
+    });
+  }
+
+  if (r.crashes?.length) {
+    md += '## 💥 崩溃详情\n\n';
+    r.crashes.forEach(c => {
+      md += `### ${c.package} — ${c.exception} (×${c.count})\n\n`;
+      md += '```\n' + c.sample + '\n```\n\n';
+    });
+  }
+
+  if (r.anrs?.length) {
+    md += '## ⏱ ANR 详情\n\n';
+    r.anrs.forEach(a => {
+      md += `- **${a.package}**: ${a.reason} (×${a.count})\n`;
+    });
+    md += '\n';
+  }
+
+  if (r.recommendations?.length) {
+    md += '## 🔧 修复建议\n\n';
+    r.recommendations.forEach(rec => { md += `- ${rec}\n`; });
+    md += '\n';
+  }
+
+  if (r.top_tags?.length) {
+    md += '## 🏷 Top TAG\n\n';
+    md += '| TAG | 数量 |\n|-----|------|\n';
+    r.top_tags.slice(0,10).forEach(t => {
+      md += `| ${t.tag} | ${t.count.toLocaleString()} |\n`;
+    });
+  }
+
+  return md;
+}
+
+// === Render Upload ===
+function renderUpload() {
+  currentFileId = '';
+  main.innerHTML = `
+    <div class="upload-section">
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".log,.txt" style="display:none">
+        <div class="dropzone-text">
+          <p class="drop-icon">📁</p>
+          <p>拖拽 logcat 日志文件到此处</p>
+          <p class="drop-hint">或点击选择文件（.log / .txt）</p>
+        </div>
+      </div>
+      <p class="error-msg" id="uploadError" style="display:none"></p>
+    </div>
+  `;
+
+  const dz = $('#dropzone');
+  const input = $('#fileInput');
+  const errEl = $('#uploadError');
+
+  dz.addEventListener('click', () => input.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('active');
+    if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length) uploadFile(input.files[0]);
+  });
+
+  async function uploadFile(file) {
+    dz.classList.add('uploading');
+    errEl.style.display = 'none';
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!res.ok) throw new Error('上传失败');
+      const data = await res.json();
+      currentFileId = data.file_id;
+      currentFileName = data.file_name;
+      renderProcessing();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+      dz.classList.remove('uploading');
+    }
+  }
+}
+
+// === Render Processing ===
+function renderProcessing() {
+  main.innerHTML = `
+    <div class="progress-section">
+      <div class="spinner"></div>
+      <p class="progress-text" id="progText">正在上传并预处理...</p>
+      <p class="progress-hint">大文件可能需要几分钟，请耐心等待...</p>
+    </div>
+  `;
+
+  let cancelled = false;
+  const pollId = setInterval(async () => {
+    if (cancelled) return;
+    try {
+      const s = await fetch(`/api/status/${currentFileId}`).then(r => r.json());
+      const el = $('#progText');
+      if (el) el.textContent = s.progress || s.status;
+    } catch {}
+  }, 1500);
+
+  fetch(`/api/parse/${currentFileId}`, { method: 'POST' })
+    .then(async res => {
+      clearInterval(pollId);
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: '解析失败' }));
+        throw new Error(e.detail || '解析失败');
+      }
+      return res.json();
+    })
+    .then(report => {
+      if (!cancelled) renderResult(report);
+    })
+    .catch(e => {
+      clearInterval(pollId);
+      if (!cancelled) renderError(e.message);
+    });
+
+  // cleanup
+  const origReset = () => { cancelled = true; };
+  window._cancelParse = origReset;
+}
+
+// === Render Result ===
+function renderResult(report) {
+  const fatalErrors = (report.level_counts.F || 0) + (report.level_counts.E || 0);
+  const html = `
+    <div class="result-section">
+      <div class="result-header">
+        <h2>📄 ${escapeHtml(report.file_name)}</h2>
+        <div style="display:flex;gap:8px">
+        <a class="btn-download" href="/api/report/${currentFileId}/download" download>⬇️ 下载报告</a>
+        <button class="btn-reset" onclick="renderUpload()">分析新文件</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><span class="stat-value">${report.total_lines.toLocaleString()}</span><span class="stat-label">总行数</span></div>
+        <div class="stat-card error"><span class="stat-value">${fatalErrors.toLocaleString()}</span><span class="stat-label">Fatal + Error</span></div>
+        <div class="stat-card warn"><span class="stat-value">${(report.level_counts.W || 0).toLocaleString()}</span><span class="stat-label">Warning</span></div>
+        <div class="stat-card"><span class="stat-value">${report.critical_issues.length}</span><span class="stat-label">关键问题</span></div>
+      </div>
+      <div class="md-body">${md2html(buildReportMd(report))}</div>
+    </div>
+  `;
+  main.innerHTML = html;
+}
+
+// === Render Error ===
+function renderError(msg) {
+  main.innerHTML = `
+    <div class="error-section">
+      <p class="error-msg">❌ ${escapeHtml(msg)}</p>
+      <button class="btn-primary" onclick="renderUpload()">重新上传</button>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// === Compare Mode ===
+let currentMode = 'single';
+let compareFile1 = null;
+let compareFile2 = null;
+
+function switchMode(mode) {
+  currentMode = mode;
+  $('#tabSingle').classList.toggle('active', mode === 'single');
+  $('#tabCompare').classList.toggle('active', mode === 'compare');
+  if (mode === 'single') renderUpload();
+  else renderCompareUpload();
+}
+
+function renderCompareUpload() {
+  compareFile1 = null;
+  compareFile2 = null;
+
+  main.innerHTML = `
+    <div class="compare-uploads">
+      <div>
+        <p class="compare-label">📂 文件 1（基准）</p>
+        <div class="dropzone" id="dz1">
+          <input type="file" id="fi1" accept=".log,.txt" style="display:none">
+          <div class="dropzone-text" id="dt1">
+            <p class="drop-icon">📁</p>
+            <p>拖拽或点击选择</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="compare-label">📂 文件 2（对比）</p>
+        <div class="dropzone" id="dz2">
+          <input type="file" id="fi2" accept=".log,.txt" style="display:none">
+          <div class="dropzone-text" id="dt2">
+            <p class="drop-icon">📁</p>
+            <p>拖拽或点击选择</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="compare-actions">
+      <button class="btn-compare btn-ai" id="btnAI" disabled onclick="runCompare('ai')">🤖 AI 智能对比</button>
+      <button class="btn-compare btn-text" id="btnText" disabled onclick="runCompare('text')">📝 文本 Diff</button>
+    </div>
+    <p class="error-msg" id="cmpError" style="display:none;text-align:center;margin-top:12px"></p>
+  `;
+
+  setupCompareUpload('dz1', 'fi1', 'dt1', 1);
+  setupCompareUpload('dz2', 'fi2', 'dt2', 2);
+}
+
+function setupCompareUpload(dzId, fiId, dtId, num) {
+  const dz = $('#' + dzId);
+  const input = $('#' + fiId);
+  dz.addEventListener('click', () => input.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('active');
+    if (e.dataTransfer.files.length) uploadCompareFile(e.dataTransfer.files[0], num, dzId, dtId);
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length) uploadCompareFile(input.files[0], num, dzId, dtId);
+  });
+}
+
+async function uploadCompareFile(file, num, dzId, dtId) {
+  const dz = $('#' + dzId);
+  dz.classList.add('uploading');
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('上传失败');
+    const data = await res.json();
+    if (num === 1) compareFile1 = data;
+    else compareFile2 = data;
+
+    // Update label
+    const dt = $('#' + dtId);
+    dt.innerHTML = '<p style="font-size:20px">✅</p><p>' + escapeHtml(file.name) + '</p><p class="drop-hint">' + (data.file_size / 1024).toFixed(1) + ' KB</p>';
+    dz.classList.remove('uploading');
+
+    // Enable buttons when both uploaded
+    if (compareFile1 && compareFile2) {
+      $('#btnAI').disabled = false;
+      $('#btnText').disabled = false;
+    }
+  } catch(e) {
+    dz.classList.remove('uploading');
+  }
+}
+
+async function runCompare(mode) {
+  if (!compareFile1 || !compareFile2) return;
+
+  $('#btnAI').disabled = true;
+  $('#btnText').disabled = true;
+  $('#cmpError').style.display = 'none';
+
+  main.innerHTML = `<div class="progress-section"><div class="spinner"></div><p class="progress-text">${mode === 'ai' ? 'AI 智能对比中...' : '文本对比中...'}</p></div>`;
+
+  try {
+    const res = await fetch('/api/compare/' + mode, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({file_id_1: compareFile1.file_id, file_id_2: compareFile2.file_id})
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({detail: '对比失败'}));
+      throw new Error(e.detail || '对比失败');
+    }
+    const result = await res.json();
+    renderCompareResult(result, mode);
+  } catch(e) {
+    main.innerHTML = `<div class="error-section"><p class="error-msg">❌ ${escapeHtml(e.message)}</p><button class="btn-primary" onclick="renderCompareUpload()">返回</button></div>`;
+  }
+}
+
+function renderCompareResult(result, mode) {
+  if (mode === 'text') {
+    renderTextDiff(result);
+  } else {
+    renderAICompare(result);
+  }
+}
+
+function renderTextDiff(r) {
+  const diffHtml = r.unified_diff
+    .split('\n')
+    .slice(0, 500)
+    .map(l => {
+      if (l.startsWith('+++') || l.startsWith('---') || l.startsWith('@@')) return `<span class="diff-meta">${escapeHtml(l)}</span>`;
+      if (l.startsWith('+')) return `<span class="diff-add">${escapeHtml(l)}</span>`;
+      if (l.startsWith('-')) return `<span class="diff-rem">${escapeHtml(l)}</span>`;
+      return `<span class="diff-normal">${escapeHtml(l)}</span>`;
+    })
+    .join('\n');
+
+  main.innerHTML = `
+    <div class="result-section">
+      <div class="result-header">
+        <h2>📝 文本对比</h2>
+        <button class="btn-reset" onclick="renderCompareUpload()">新对比</button>
+      </div>
+      <div class="compare-stats">
+        <div class="stat-card"><span class="stat-value" style="color:var(--green)">+${r.added_lines}</span><span class="stat-label">新增行</span></div>
+        <div class="stat-card"><span class="stat-value" style="color:var(--red)">-${r.removed_lines}</span><span class="stat-label">删除行</span></div>
+        <div class="stat-card"><span class="stat-value">${r.total_diffs}</span><span class="stat-label">总变更</span></div>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:8px">${escapeHtml(r.file_1_name)} ↔ ${escapeHtml(r.file_2_name)}</p>
+      <div class="diff-view"><pre style="margin:0;white-space:pre-wrap">${diffHtml}</pre></div>
+    </div>
+  `;
+}
+
+function renderAICompare(r) {
+  let diffTable = '';
+  if (r.differences?.length) {
+    diffTable = `<table style="width:100%;margin:12px 0"><tr style="color:var(--text-dim);font-size:12px;text-transform:uppercase"><th style="text-align:left;padding:8px">类别</th><th style="text-align:left;padding:8px">详情</th><th style="text-align:left;padding:8px">变化</th></tr>`;
+    r.differences.forEach(d => {
+      const sevClass = d.severity === 'new' ? 'sev-HIGH' : d.severity === 'resolved' ? 'sev-LOW' : 'sev-MEDIUM';
+      diffTable += `<tr><td style="padding:6px 8px">${escapeHtml(d.category)}</td><td style="padding:6px 8px">${escapeHtml(d.detail)}</td><td style="padding:6px 8px"><span class="sev-badge ${sevClass}">${escapeHtml(d.severity)}</span></td></tr>`;
+    });
+    diffTable += '</table>';
+  }
+
+  const newIssues = r.new_issues?.length ? '<h3>🆕 新增问题</h3><ul>' + r.new_issues.map(i => '<li>' + escapeHtml(i) + '</li>').join('') + '</ul>' : '';
+  const resolved = r.resolved_issues?.length ? '<h3>✅ 已解决问题</h3><ul>' + r.resolved_issues.map(i => '<li>' + escapeHtml(i) + '</li>').join('') + '</ul>' : '';
+  const recs = r.recommendations?.length ? '<h3>🔧 修复建议</h3><ol>' + r.recommendations.map(i => '<li>' + escapeHtml(i) + '</li>').join('') + '</ol>' : '';
+
+  main.innerHTML = `
+    <div class="result-section">
+      <div class="result-header">
+        <h2>🤖 AI 智能对比</h2>
+        <button class="btn-reset" onclick="renderCompareUpload()">新对比</button>
+      </div>
+      <div class="md-body">
+        <h2>总结</h2>
+        <p>${escapeHtml(r.summary)}</p>
+        ${r.differences?.length ? '<h2>关键差异</h2>' + diffTable : ''}
+        ${newIssues}
+        ${resolved}
+        ${recs}
+      </div>
+    </div>
+  `;
+}
+
+// === Init ===
+renderUpload();
+</script>
+</body>
+</html>

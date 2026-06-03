@@ -1,0 +1,15 @@
+01-07 18:00:00.100  1764  1764 I distributeddata: Service started
+01-07 18:00:00.200  1764  1764 D distributeddata: Loading config from /data/config.json
+01-07 18:00:00.300  1764  1764 I distributeddata: Config loaded successfully
+01-07 18:00:00.400  1764  1868 E distributeddata/CONCUR: Task 19252 apply qos failed, errno=1
+01-07 18:00:00.500  1764  1868 E distributeddata/CONCUR: Task 19252 leave qos failed, errno=1
+01-07 18:00:00.600  1764  1868 E CollaborationFwk: QueryStringValue# numRows is empty in datashare_utils.cpp:47
+01-07 18:00:00.700  1764  1868 F system_server: Watchdog detected stuck thread in ActivityManager
+01-07 18:00:00.800  1764  1868 F system_server: Blocked on Binder transaction with pid 2300
+01-07 18:00:00.810  1764  1868 E AndroidRuntime: FATAL EXCEPTION: main
+01-07 18:00:00.820  1764  1868 E AndroidRuntime: java.lang.NullPointerException: Attempt to invoke virtual method on null object
+01-07 18:00:00.830  1764  1868 E AndroidRuntime:     at com.ohos.sceneboard.SceneManager.updateLayout(SceneManager.java:342)
+01-07 18:00:00.840  1764  1868 E AndroidRuntime:     at com.ohos.sceneboard.EventHandler.handleMessage(EventHandler.java:128)
+01-07 18:00:00.900  1764  1868 I ActivityManager: Process com.ohos.sceneboard (pid 2300) has died
+01-07 18:00:00.950  1764  1764 W powermgr: DisplayPowerBrightness adjustment delayed
+01-07 18:00:01.000  1764  1764 E system: ANR in com.ohos.sceneboard, reason: Input dispatching timed out

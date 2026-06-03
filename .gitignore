@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+uploads/*
+!uploads/_test_*
+.DS_Store
+*.report.md
