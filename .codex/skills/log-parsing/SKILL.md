@@ -9,7 +9,7 @@ description: Android/HarmonyOS logcat analysis. Use when analyzing log files (.l
 
 ```bash
 /Library/Frameworks/Python.framework/Versions/3.8/bin/python3 \
-  /Users/gnayoac/codex/log-parsing/skill/scripts/analyze.py \
+  /Users/gnayoac/codex/log-parsing/.codex/skills/log-parsing/scripts/analyze.py \
   /path/to/logfile.log
 ```
 
